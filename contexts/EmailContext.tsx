@@ -1,3 +1,4 @@
+"use client"
 import { createContext, useContext, useReducer, ReactNode } from 'react';
 import { Email, EmailDetail } from '@/lib/gmail';
 

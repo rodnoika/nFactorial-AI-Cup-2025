@@ -1,183 +1,181 @@
 'use client';
 
-import { useState, useCallback } from 'react';
-import { EmailDetail } from '@/lib/gmail';
-import { useDebouncedCallback } from 'use-debounce';
-
-type SummaryType = 'brief' | 'detailed' | 'action-items';
-type ModelType = 'pro' | 'flash';
+import { useState } from 'react';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Skeleton } from '@/components/ui/skeleton';
+import { formatSummary, extractActionItems } from '@/lib/ai/formatting';
+import DOMPurify from 'dompurify';
 
 interface EmailSummaryProps {
-  email: EmailDetail;
-  onClose?: () => void;
+  emailId: string;
+  subject: string;
+  content: string;
+  onSummaryGenerated?: (summary: string) => void;
 }
 
 interface SummaryResponse {
   summary: string;
-  model: ModelType;
-  error?: string;
+  type: 'brief' | 'detailed' | 'action-items';
 }
 
-export function EmailSummary({ email, onClose }: EmailSummaryProps) {
-  const [summary, setSummary] = useState<string>('');
-  const [loading, setLoading] = useState(false);
+export function EmailSummary({ emailId, subject, content, onSummaryGenerated }: EmailSummaryProps) {
+  const [summary, setSummary] = useState<string | null>(null);
+  const [type, setType] = useState<'brief' | 'detailed' | 'action-items'>('brief');
+  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [type, setType] = useState<SummaryType>('brief');
-  const [retryCount, setRetryCount] = useState(0);
   const [retryAfter, setRetryAfter] = useState<number | null>(null);
-  const [model, setModel] = useState<ModelType>('pro');
 
-  // Debounced summary generation to prevent rapid requests
-  const debouncedGenerateSummary = useDebouncedCallback(
-    async (summaryType: SummaryType) => {
-      try {
-        setLoading(true);
-        setError(null);
-        setType(summaryType);
+  const generateSummary = async (summaryType: 'brief' | 'detailed' | 'action-items') => {
+    if (!content) {
+      setError('No email content available to summarize');
+      return;
+    }
 
-        const response = await fetch('/api/ai/summarize', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            content: email.body || email.htmlBody || email.snippet,
-            type: summaryType,
-          }),
-        });
-
-        const data = await response.json() as SummaryResponse;
-
-        if (!response.ok) {
-          // Handle rate limit errors
-          if (response.status === 429) {
-            const retryAfter = parseInt(response.headers.get('Retry-After') || '5', 10);
-            setRetryAfter(retryAfter);
-            setModel(response.headers.get('X-Model') as ModelType || 'pro');
-            setError(`Rate limit reached. Please wait ${retryAfter} seconds before trying again.`);
-            
-            // Auto-retry after the specified delay if we haven't retried too many times
-            if (retryCount < 2) {
-              setTimeout(() => {
-                setRetryCount(prev => prev + 1);
-                debouncedGenerateSummary(summaryType);
-              }, retryAfter * 1000);
-              return;
-            }
-          } else {
-            throw new Error(data.error || 'Failed to generate summary');
-          }
-        }
-
-        setSummary(data.summary);
-        setModel(data.model);
-        setRetryCount(0);
-        setRetryAfter(null);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to generate summary');
-        setSummary('');
-      } finally {
-        setLoading(false);
-      }
-    },
-    500 // 500ms debounce delay
-  );
-
-  const handleSummaryTypeChange = useCallback((summaryType: SummaryType) => {
-    setRetryCount(0);
+    setIsLoading(true);
+    setError(null);
     setRetryAfter(null);
-    debouncedGenerateSummary(summaryType);
-  }, [debouncedGenerateSummary]);
 
-  return (
-    <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
-      <div className="mb-4 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-            AI Summary
-          </h3>
-          {model && (
-            <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-800 dark:bg-blue-900 dark:text-blue-300">
-              {model === 'pro' ? 'Pro' : 'Flash'}
-            </span>
-          )}
-        </div>
-        <div className="flex gap-2">
-          <button
-            onClick={() => handleSummaryTypeChange('brief')}
-            disabled={loading || (!!retryAfter && retryCount >= 2)}
-            className={`rounded px-3 py-1 text-sm ${
-              type === 'brief'
-                ? 'bg-primary text-white'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'
-            } disabled:opacity-50 disabled:cursor-not-allowed`}
-          >
-            Brief
-          </button>
-          <button
-            onClick={() => handleSummaryTypeChange('detailed')}
-            disabled={loading || (!!retryAfter && retryCount >= 2)}
-            className={`rounded px-3 py-1 text-sm ${
-              type === 'detailed'
-                ? 'bg-primary text-white'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'
-            } disabled:opacity-50 disabled:cursor-not-allowed`}
-          >
-            Detailed
-          </button>
-          <button
-            onClick={() => handleSummaryTypeChange('action-items')}
-            disabled={loading || (!!retryAfter && retryCount >= 2)}
-            className={`rounded px-3 py-1 text-sm ${
-              type === 'action-items'
-                ? 'bg-primary text-white'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'
-            } disabled:opacity-50 disabled:cursor-not-allowed`}
-          >
-            Action Items
-          </button>
-        </div>
-        {onClose && (
-          <button
-            onClick={onClose}
-            className="ml-2 rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-500 dark:hover:bg-gray-700"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="h-5 w-5"
-              viewBox="0 0 20 20"
-              fill="currentColor"
-            >
-              <path
-                fillRule="evenodd"
-                d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
-                clipRule="evenodd"
-              />
-            </svg>
-          </button>
+    try {
+      const response = await fetch('/api/ai/summarize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          emailId,
+          subject,
+          content,
+          type: summaryType,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        if (response.status === 429) {
+          setRetryAfter(error.retryAfter);
+          setError('Rate limit exceeded. Please try again later.');
+        } else {
+          setError(error.message || 'Failed to generate summary');
+        }
+        return;
+      }
+
+      const data: SummaryResponse = await response.json();
+      const sanitizedSummary = DOMPurify.sanitize(data.summary, {
+        ALLOWED_TAGS: ['h2', 'p', 'ul', 'li', 'strong', 'em', 'br'],
+        ALLOWED_ATTR: ['class'],
+      });
+      
+      setSummary(sanitizedSummary);
+      onSummaryGenerated?.(sanitizedSummary);
+    } catch (err) {
+      setError('Failed to generate summary. Please try again.');
+      console.error('Summary generation error:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleTypeChange = (value: string) => {
+    const newType = value as 'brief' | 'detailed' | 'action-items';
+    setType(newType);
+    generateSummary(newType);
+  };
+
+  const getActionItems = () => {
+    if (!summary || type !== 'action-items') return null;
+    const items = extractActionItems(summary);
+    return (
+      <div className="mt-4 space-y-4">
+        {items.high.length > 0 && (
+          <div>
+            <h3 className="text-lg font-semibold text-red-600 mb-2">High Priority</h3>
+            <ul className="list-disc list-inside space-y-1">
+              {items.high.map((item: string, i: number) => (
+                <li key={i} className="text-gray-700">{item}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {items.medium.length > 0 && (
+          <div>
+            <h3 className="text-lg font-semibold text-yellow-600 mb-2">Medium Priority</h3>
+            <ul className="list-disc list-inside space-y-1">
+              {items.medium.map((item: string, i: number) => (
+                <li key={i} className="text-gray-700">{item}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {items.low.length > 0 && (
+          <div>
+            <h3 className="text-lg font-semibold text-green-600 mb-2">Low Priority</h3>
+            <ul className="list-disc list-inside space-y-1">
+              {items.low.map((item: string, i: number) => (
+                <li key={i} className="text-gray-700">{item}</li>
+              ))}
+            </ul>
+          </div>
         )}
       </div>
+    );
+  };
 
-      {loading ? (
-        <div className="flex items-center justify-center py-8">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+  const renderSummaryContent = () => {
+    if (!summary) return null;
+
+    return (
+      <div 
+        className="prose prose-sm max-w-none dark:prose-invert"
+        dangerouslySetInnerHTML={{ __html: summary }}
+      />
+    );
+  };
+
+  return (
+    <Card className="p-4">
+      <div className="mb-4 flex items-center justify-between">
+        <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Summary</h2>
+        <Select value={type} onValueChange={handleTypeChange}>
+          <SelectTrigger className="w-[180px]">
+            <SelectValue placeholder="Select type" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="brief">Brief Summary</SelectItem>
+            <SelectItem value="detailed">Detailed Summary</SelectItem>
+            <SelectItem value="action-items">Action Items</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      {isLoading ? (
+        <div className="space-y-3">
+          <Skeleton className="h-4 w-3/4" />
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-5/6" />
         </div>
       ) : error ? (
-        <div className="rounded-lg bg-red-50 p-4 text-red-700 dark:bg-red-900/20 dark:text-red-400">
-          {error}
-          {retryAfter && retryCount < 2 && (
-            <div className="mt-2 text-sm">
-              Retrying in {retryAfter} seconds...
-            </div>
+        <div className="rounded-md bg-red-50 p-4 text-sm text-red-700 dark:bg-red-900/50 dark:text-red-200">
+          <p>{error}</p>
+          {retryAfter && (
+            <p className="mt-2">
+              Please try again in {Math.ceil(retryAfter / 1000)} seconds.
+            </p>
           )}
         </div>
       ) : summary ? (
-        <div className="prose prose-sm max-w-none dark:prose-invert">
-          <div className="whitespace-pre-wrap">{summary}</div>
-        </div>
+        renderSummaryContent()
       ) : (
-        <div className="flex items-center justify-center py-8 text-gray-500 dark:text-gray-400">
-          Select a summary type to generate
+        <div className="text-center">
+          <Button
+            onClick={() => generateSummary(type)}
+            disabled={isLoading}
+            className="w-full"
+          >
+            Generate Summary
+          </Button>
         </div>
       )}
-    </div>
+    </Card>
   );
 } 

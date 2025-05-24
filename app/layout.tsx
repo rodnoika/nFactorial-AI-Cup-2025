@@ -1,5 +1,8 @@
 import { Inter } from "next/font/google";
-import { Providers } from "./providers";
+import { SessionProvider } from 'next-auth/react';
+import { ChatProvider } from '@/contexts/ChatContext';
+import { EmailProvider } from '@/contexts/EmailContext';
+import { Providers } from "@/app/providers";
 import "./globals.css";
 import type { Metadata } from 'next'
 
@@ -16,9 +19,17 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <body className={inter.className}>
-        <Providers>{children}</Providers>
+        <Providers>
+          <SessionProvider>
+            <EmailProvider>
+              <ChatProvider>
+                {children}
+              </ChatProvider>
+            </EmailProvider>
+          </SessionProvider>
+        </Providers>
       </body>
     </html>
   );

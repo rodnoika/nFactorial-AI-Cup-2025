@@ -1,13 +1,18 @@
 'use client';
 
 import { useEmail } from '@/contexts/EmailContext';
+import { useChat } from '@/contexts/ChatContext';
 import { format } from 'date-fns';
 import { useRouter } from 'next/navigation';
 import { EmailSummary } from '@/components/ai/EmailSummary';
+import { ChatButton } from '@/components/ui/chat-button';
+import { ChatDrawer } from '@/components/ui/chat-drawer';
+import { ChatProvider } from '@/contexts/ChatContext';
 
 export function EmailDetail() {
   const { state, dispatch } = useEmail();
   const router = useRouter();
+  const { isDrawerOpen, toggleDrawer, unreadCount, markAllAsRead, setSelectedEmail } = useChat();
 
   if (!state.selectedEmail) {
     return (
@@ -24,8 +29,14 @@ export function EmailDetail() {
     router.back();
   };
 
+  const handleChatOpen = () => {
+    setSelectedEmail(state.selectedEmail);
+    toggleDrawer();
+    markAllAsRead();
+  };
+
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex flex-col h-full">
       <div className="sticky top-0 z-10 border-b border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
         <div className="flex items-center gap-4">
           <button
@@ -72,7 +83,14 @@ export function EmailDetail() {
             </div>
           </div>
 
-          <EmailSummary email={state.selectedEmail} />
+          <EmailSummary 
+            emailId={state.selectedEmail.id}
+            subject={subject}
+            content={htmlBody || body || ''}
+            onSummaryGenerated={(summary) => {
+              console.log('Summary generated:', summary);
+            }}
+          />
 
           {attachments && attachments.length > 0 && (
             <div className="mb-6">
@@ -118,6 +136,9 @@ export function EmailDetail() {
           </div>
         </div>
       </div>
+
+      <ChatButton onClick={handleChatOpen} unreadCount={unreadCount} />
+      <ChatDrawer isOpen={isDrawerOpen} onClose={toggleDrawer} />
     </div>
   );
 } 
