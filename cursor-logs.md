@@ -366,4 +366,150 @@
 5. Add email preview
 6. Implement email drafts
 7. Add attachment support
-8. Add email tracking 
+8. Add email tracking
+
+## Email Sending Improvements (2024-03-21)
+
+### Enhanced Error Handling and OAuth Client
+- Added proper error types and detailed error messages for email sending
+- Implemented token refresh handling in the OAuth client
+- Added proper MIME email formatting with multipart support
+- Added specific error handling for common Gmail API errors:
+  - 401: Authentication failures
+  - 403: Permission issues
+  - 429: Rate limiting
+- Added proper session typing with NextAuth type extensions
+
+### Changes Made
+1. Email Sending Endpoint (`app/api/email/send/route.ts`):
+   - Added `EmailError` interface for structured error responses
+   - Enhanced OAuth client with token refresh support
+   - Added proper MIME email formatting with multipart support
+   - Improved error handling with specific error messages
+   - Added detailed logging for debugging
+
+2. Type Definitions (`types/next-auth.d.ts`):
+   - Extended NextAuth session type with custom fields:
+     - `accessToken`
+     - `refreshToken`
+     - `expiresAt`
+   - Added JWT type extensions for token handling
+
+### Next Steps
+1. Test email sending with various scenarios:
+   - Valid emails
+   - Invalid recipients
+   - Rate limiting
+   - Token expiration
+2. Monitor error logs for any issues
+3. Consider adding email templates
+4. Add support for attachments
+5. Implement email scheduling
+
+## Email Sending Fixes (2024-03-21)
+
+### Changes Made
+1. Fixed Email Sending in Chat Route (`app/api/ai/chat/route.ts`):
+   - Updated to use absolute URL for server-side requests
+   - Added proper error handling and propagation
+   - Improved logging for debugging
+   - Added detailed error messages in metadata
+   - Fixed response handling to properly parse JSON
+
+### Technical Details
+- Now using `process.env.NEXTAUTH_URL` for base URL
+- Added fallback to `http://localhost:3001` for development
+- Improved error handling with detailed error messages
+- Added proper type checking for errors
+- Enhanced logging for better debugging
+
+### Next Steps
+1. Test email sending with various scenarios:
+   - Valid email addresses
+   - Invalid recipients
+   - Rate limiting cases
+   - Token expiration
+2. Monitor error logs for any issues
+3. Consider adding retry logic for transient failures
+4. Add more detailed error messages for specific Gmail API errors
+
+## Email Sending Validation and Confirmation Flow (2024-03-21)
+
+### Changes Made
+1. Improved Email Sending Logic (`app/api/ai/chat/route.ts`):
+   - Added proper user action parsing with `parseUserAction` helper
+   - Added email data validation with `validateEmailData` helper
+   - Implemented proper confirmation flow
+   - Fixed JSON parsing issues
+   - Added better error handling and logging
+
+### Technical Details
+- Added helper functions:
+  - `parseUserAction`: Safely parses user messages for send action
+  - `validateEmailData`: Validates email structure and required fields
+- Improved action handling:
+  - Properly checks user confirmation
+  - Validates email data before sending
+  - Better error messages and state management
+- Enhanced error handling:
+  - Added validation for email structure
+  - Better error propagation
+  - Improved logging for debugging
+
+### Security and Validation
+- Email data is now validated before sending
+- User confirmation is required before sending
+- Better error handling for invalid data
+- Improved logging for security monitoring
+
+### Next Steps
+1. Test the confirmation flow:
+   - Verify user confirmation works
+   - Check error handling
+   - Test invalid email data
+2. Monitor error logs
+3. Consider adding:
+   - Rate limiting
+   - Email templates
+   - Draft saving
+   - Better error recovery
+
+## Improved User Input Handling (2024-03-21)
+
+### Changes Made
+1. Enhanced User Input Detection (`app/api/ai/chat/route.ts`):
+   - Added `detectUserAction` helper for better command detection
+   - Added `extractJsonFromResponse` helper for robust JSON parsing
+   - Updated system prompt to be explicit about response format
+   - Improved error handling for invalid inputs
+   - Added better feedback for missing email details
+
+### Technical Details
+- New helper functions:
+  - `detectUserAction`: Detects both explicit commands and JSON actions
+  - `extractJsonFromResponse`: Handles both raw JSON and markdown-formatted JSON
+- Improved action handling:
+  - Better detection of "send" commands
+  - Proper handling of JSON responses
+  - Clear error messages for missing information
+- Enhanced error handling:
+  - Better validation feedback
+  - Clearer error messages
+  - Improved logging
+
+### User Experience Improvements
+- Better handling of natural language commands
+- Clearer feedback when email details are missing
+- More robust JSON parsing
+- Better error messages for invalid inputs
+
+### Next Steps
+1. Test the improved input handling:
+   - Try natural language commands
+   - Test JSON responses
+   - Verify error messages
+2. Monitor user feedback
+3. Consider adding:
+   - More natural language commands
+   - Better command suggestions
+   - Improved error recovery 

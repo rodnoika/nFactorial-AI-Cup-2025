@@ -155,40 +155,43 @@ export async function getEmailDetails(id: string) {
   }
 }
 
-export async function sendEmail(to: string, subject: string, body: string) {
-  try {
-    const { gmail, auth } = await getGmailClient();
-
-    const message = [
-      'Content-Type: text/html; charset=utf-8',
-      'MIME-Version: 1.0',
-      `To: ${to}`,
-      'From: me',
-      `Subject: ${subject}`,
-      '',
-      body,
-    ].join('\n');
-
-    const encodedMessage = Buffer.from(message)
-      .toString('base64')
-      .replace(/\+/g, '-')
-      .replace(/\//g, '_')
-      .replace(/=+$/, '');
-
-    await gmail.users.messages.send({
-      userId: 'me',
-      requestBody: {
-        raw: encodedMessage,
-      },
-      auth,
-    });
-  } catch (error: any) {
-    if (error.response?.status === 401) {
-      throw new Error('Authentication required. Please sign in again.');
+export async function sendEmail(to: string, subject: string, body: string, htmlBody?: string) {
+    try {
+      const { gmail, auth } = await getGmailClient();
+  
+      const message = [
+        'Content-Type: text/html; charset=utf-8',
+        'MIME-Version: 1.0',
+        `To: ${to}`,
+        'From: me',
+        `Subject: ${subject}`,
+        '',
+        htmlBody || body,
+      ].join('\n');
+  
+      const encodedMessage = Buffer.from(message)
+        .toString('base64')
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=+$/, '');
+  
+      console.log('Sending email:', { to, subject });
+  
+      await gmail.users.messages.send({
+        userId: 'me',
+        requestBody: {
+          raw: encodedMessage,
+        },
+        auth,
+      });
+  
+      console.log('Email sent successfully');
+    } catch (error: any) {
+      console.error('Failed to send email:', error);
+      throw error;
     }
-    throw error;
   }
-}
+  
 
 export async function markAsRead(id: string) {
   try {
