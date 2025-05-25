@@ -173,8 +173,9 @@ export function ComposeEmail({ onClose }: ComposeEmailProps) {
               onClick={() => handleAIAssist('full')}
               disabled={isSubmitting || !formData.to || !formData.subject}
               className="flex items-center gap-2"
+              aria-label="Generate email content using AI"
             >
-              <Sparkles className="h-4 w-4" />
+              <Sparkles className="h-4 w-4" aria-hidden="true" />
               Generate
             </Button>
             <Button
@@ -183,19 +184,22 @@ export function ComposeEmail({ onClose }: ComposeEmailProps) {
               onClick={() => handleAIAssist('assist')}
               disabled={isSubmitting || !formData.to || !formData.subject || !formData.body}
               className="flex items-center gap-2"
+              aria-label="Improve existing email content using AI"
             >
-              <Wand2 className="h-4 w-4" />
+              <Wand2 className="h-4 w-4" aria-hidden="true" />
               Improve
             </Button>
             <button
               onClick={onClose}
               className="rounded p-2 text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700"
+              aria-label="Close compose email"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
                 className="h-5 w-5"
                 viewBox="0 0 20 20"
                 fill="currentColor"
+                aria-hidden="true"
               >
                 <path
                   fillRule="evenodd"
@@ -263,7 +267,11 @@ export function ComposeEmail({ onClose }: ComposeEmailProps) {
               />
             </div>
             {error && (
-              <div className="rounded-md bg-red-50 p-4 text-sm text-red-700 dark:bg-red-900/50 dark:text-red-200">
+              <div 
+                className="rounded-md bg-red-50 p-4 text-sm text-red-700 dark:bg-red-900/50 dark:text-red-200"
+                role="alert"
+                aria-live="polite"
+              >
                 {error}
               </div>
             )}
@@ -273,6 +281,7 @@ export function ComposeEmail({ onClose }: ComposeEmailProps) {
               type="button"
               onClick={onClose}
               className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600"
+              aria-label="Cancel composing email"
             >
               Cancel
             </button>
@@ -280,6 +289,7 @@ export function ComposeEmail({ onClose }: ComposeEmailProps) {
               type="submit"
               disabled={isSubmitting}
               className="inline-flex items-center rounded-md border border-transparent bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+              aria-label={isSubmitting ? "Sending email..." : "Send email"}
             >
               {isSubmitting ? (
                 <>

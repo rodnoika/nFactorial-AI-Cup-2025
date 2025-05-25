@@ -86,7 +86,11 @@ export function EmailList({ emails, onEmailSelect, selectedEmailId }: EmailListP
         </div>
 
         {error && (
-          <div className="rounded-md bg-destructive/15 p-3 text-sm text-destructive mb-4">
+          <div 
+            className="rounded-md bg-destructive/15 p-3 text-sm text-destructive mb-4"
+            role="alert"
+            aria-live="polite"
+          >
             {error}
           </div>
         )}
@@ -96,6 +100,7 @@ export function EmailList({ emails, onEmailSelect, selectedEmailId }: EmailListP
           value={searchQuery}
           onChange={e => setSearchQuery(e.target.value)}
           className="w-full"
+          aria-label="Search emails by sender, subject, or content"
         />
       </div>
 
@@ -107,13 +112,16 @@ export function EmailList({ emails, onEmailSelect, selectedEmailId }: EmailListP
             const isSelected = email.id === selectedEmailId
 
             return (
-              <div
+              <button
                 key={email.id}
                 className={cn(
-                  'p-4 hover:bg-accent cursor-pointer transition-colors',
+                  'w-full text-left p-4 hover:bg-accent transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2',
                   isSelected && 'bg-accent'
                 )}
                 onClick={() => onEmailSelect?.(email)}
+                aria-label={`Email from ${email.from} with subject ${email.subject}`}
+                aria-selected={isSelected}
+                role="option"
               >
                 <div className="flex items-start gap-2 min-w-0">
                   <div className="flex-1 min-w-0">
@@ -129,6 +137,7 @@ export function EmailList({ emails, onEmailSelect, selectedEmailId }: EmailListP
                                 size="sm"
                                 className="h-6 w-6 p-0 ml-1"
                                 onClick={(e: React.MouseEvent) => e.stopPropagation()}
+                                aria-label={`Change category for ${email.from}`}
                               >
                                 {categoryIcons[category.id as keyof typeof categoryIcons] && 
                                   React.createElement(categoryIcons[category.id as keyof typeof categoryIcons], {
@@ -145,6 +154,7 @@ export function EmailList({ emails, onEmailSelect, selectedEmailId }: EmailListP
                                     e.stopPropagation()
                                     handleUpdateCategory(email.from, cat.id)
                                   }}
+                                  aria-label={`Set category to ${cat.name} for ${email.from}`}
                                 >
                                   <div className="flex items-center gap-2">
                                     {categoryIcons[cat.id as keyof typeof categoryIcons] && 
@@ -168,6 +178,7 @@ export function EmailList({ emails, onEmailSelect, selectedEmailId }: EmailListP
                               handleCategorize(email.from)
                             }}
                             disabled={isCategorizing}
+                            aria-label={`Categorize email from ${email.from}`}
                           >
                             {isCategorizing ? (
                               <Loader2 className="h-3 w-3 animate-spin" />
@@ -187,7 +198,7 @@ export function EmailList({ emails, onEmailSelect, selectedEmailId }: EmailListP
                     </div>
                   </div>
                 </div>
-              </div>
+              </button>
             )
           })}
         </div>

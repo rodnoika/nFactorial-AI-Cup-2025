@@ -42,12 +42,15 @@ export function EmailDetail() {
           <button
             onClick={handleBack}
             className="rounded p-2 text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700"
+            aria-label="Go back to email list"
+            aria-describedby="email-subject"
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
               className="h-5 w-5"
               viewBox="0 0 20 20"
               fill="currentColor"
+              aria-hidden="true"
             >
               <path
                 fillRule="evenodd"
@@ -56,8 +59,8 @@ export function EmailDetail() {
               />
             </svg>
           </button>
-          <h1 className="text-xl font-semibold text-gray-900 dark:text-white">
-            {subject}
+          <h1 className="text-xl font-semibold text-gray-900 dark:text-white" id="email-subject">
+            {subject || 'No Subject'}
           </h1>
         </div>
       </div>
@@ -93,21 +96,23 @@ export function EmailDetail() {
           />
 
           {attachments && attachments.length > 0 && (
-            <div className="mb-6">
-              <h2 className="mb-2 text-sm font-medium text-gray-900 dark:text-white">
+            <div className="mb-6" role="region" aria-label="Email attachments">
+              <h2 className="mb-2 text-sm font-medium text-gray-900 dark:text-white" id="attachments-heading">
                 Attachments
               </h2>
-              <div className="space-y-2">
+              <div className="space-y-2" aria-labelledby="attachments-heading">
                 {attachments.map((attachment) => (
                   <div
                     key={attachment.id}
                     className="flex items-center gap-2 rounded-lg border border-gray-200 p-2 dark:border-gray-700"
+                    role="listitem"
                   >
                     <svg
                       xmlns="http://www.w3.org/2000/svg"
                       className="h-5 w-5 text-gray-400"
                       viewBox="0 0 20 20"
                       fill="currentColor"
+                      aria-hidden="true"
                     >
                       <path
                         fillRule="evenodd"
@@ -137,7 +142,11 @@ export function EmailDetail() {
         </div>
       </div>
 
-      <ChatButton onClick={handleChatOpen} unreadCount={unreadCount} />
+      <ChatButton 
+        onClick={handleChatOpen} 
+        unreadCount={unreadCount} 
+        aria-label={`Open chat about email: ${subject || 'No Subject'}. ${unreadCount > 0 ? `${unreadCount} unread messages` : ''}`}
+      />
       <ChatDrawer isOpen={isDrawerOpen} onClose={toggleDrawer} />
     </div>
   );
