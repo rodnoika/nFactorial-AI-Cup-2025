@@ -156,6 +156,7 @@ export function EmailList({ emails, onEmailSelect, selectedEmailId }: EmailListP
                                   }}
                                   aria-label={`Set category to ${cat.name} for ${email.from}`}
                                 >
+                                  {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions */}
                                   <div className="flex items-center gap-2">
                                     {categoryIcons[cat.id as keyof typeof categoryIcons] && 
                                       React.createElement(categoryIcons[cat.id as keyof typeof categoryIcons], {

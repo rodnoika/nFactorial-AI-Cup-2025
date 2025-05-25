@@ -1,0 +1,9 @@
+{
+    "allowedPackages": {
+      "sharp": true,
+      "esbuild": true,
+      "@heroui/shared-utils": true,
+      "unrs-resolver": true
+    }
+  }
+  

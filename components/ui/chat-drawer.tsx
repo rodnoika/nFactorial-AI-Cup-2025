@@ -41,6 +41,7 @@ export function ChatDrawer({ isOpen, onClose, className }: ChatDrawerProps) {
   return (
     <>
       {isOpen && (
+        // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
         <div
           className="fixed inset-0 z-40 bg-black/50 transition-opacity"
           onClick={onClose}
