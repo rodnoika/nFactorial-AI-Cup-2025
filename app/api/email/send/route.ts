@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import auth from 'next-auth';
+import { getToken } from 'next-auth/jwt';
 import { authOptions } from '@/lib/auth';
 import { google } from 'googleapis';
 import { OAuth2Client } from 'google-auth-library';
@@ -64,12 +64,12 @@ function createEmailMessage(to: string[], subject: string, content: string) {
 
 export async function POST(req: Request) {
   try {
-    const session = await auth(authOptions);
-    if (!session?.accessToken) {
+    const token = await getToken({ req });
+    if (!token?.accessToken) {
       const error: EmailError = {
         code: 401,
         message: 'Unauthorized',
-        details: 'No access token found in session',
+        details: 'No access token found',
       };
       console.error('Auth error:', error);
       return NextResponse.json(error, { status: 401 });
@@ -88,8 +88,8 @@ export async function POST(req: Request) {
     }
 
     const oauth2Client = await getOAuthClient(
-      session.accessToken as string,
-      session.refreshToken as string
+      token.accessToken,
+      token.refreshToken
     );
 
     try {
