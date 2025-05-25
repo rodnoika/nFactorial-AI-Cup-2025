@@ -1,11 +1,11 @@
 # nFactorial-Ai-Cup-2025
 Fork this repository and build nFactorial Ai Cup 2025 projects 
 
-## < Your Name >
+## < Yerassyl Satymbekov >
 
-## < Your App's Name >
+## < Gmail AI Assistant >
 
-## < Your App's description, technical considerations, etc. >
+## < Сервис, который превращает работу с электронной почтой в настоящее удовольствие. Зачем тратить время на сложные интерфейсы, на огромные скучные тексты и беспорядка в контактах. С GAA(Gmail AI Assistant) ты получишь сортировка писем, резюмирование длинных сообщений и помощь написаний пи́сем, а так же современные технологий и user-friendly дизайн. Stack: Next.Js, Gemini API, Gmail API, cursor >
 
 
 ## Typeform to submit:
