@@ -3,14 +3,31 @@
 import { useEmail } from '@/contexts/EmailContext';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { useChat } from '@/contexts/ChatContext';
+import { Button } from '@/components/ui/button';
+import { Wand2, Sparkles } from 'lucide-react';
 
 interface ComposeEmailProps {
   onClose: () => void;
 }
 
+// Add logging utility
+const log = {
+  info: (message: string, data?: any) => {
+    console.log(`[ComposeEmail] [INFO] ${new Date().toISOString()} - ${message}`, data ? JSON.stringify(data, null, 2) : '');
+  },
+  error: (message: string, error?: any) => {
+    console.error(`[ComposeEmail] [ERROR] ${new Date().toISOString()} - ${message}`, error ? JSON.stringify(error, null, 2) : '');
+  },
+  warn: (message: string, data?: any) => {
+    console.warn(`[ComposeEmail] [WARN] ${new Date().toISOString()} - ${message}`, data ? JSON.stringify(data, null, 2) : '');
+  }
+};
+
 export function ComposeEmail({ onClose }: ComposeEmailProps) {
   const router = useRouter();
   const { dispatch } = useEmail();
+  const { addMessage, setIsLoading } = useChat();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [formData, setFormData] = useState({
@@ -21,10 +38,17 @@ export function ComposeEmail({ onClose }: ComposeEmailProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    log.info('Starting email submission', { 
+      hasRecipient: !!formData.to,
+      hasSubject: !!formData.subject,
+      contentLength: formData.body.length
+    });
+
     setError(null);
     setIsSubmitting(true);
 
     try {
+      log.info('Making API request to send email');
       const response = await fetch('/api/gmail/send', {
         method: 'POST',
         headers: {
@@ -35,13 +59,16 @@ export function ComposeEmail({ onClose }: ComposeEmailProps) {
 
       if (!response.ok) {
         const data = await response.json();
+        log.error('Email send failed', { status: response.status, error: data.error });
         throw new Error(data.error || 'Failed to send email');
       }
 
+      log.info('Email sent successfully');
       dispatch({ type: 'SET_SELECTED_EMAIL', payload: null });
       onClose();
       router.refresh();
     } catch (err) {
+      log.error('Error during email submission', err);
       setError(err instanceof Error ? err.message : 'Failed to send email');
     } finally {
       setIsSubmitting(false);
@@ -52,7 +79,84 @@ export function ComposeEmail({ onClose }: ComposeEmailProps) {
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
   ) => {
     const { name, value } = e.target;
+    log.info('Form field changed', { field: name, valueLength: value.length });
     setFormData((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleAIAssist = async (mode: 'full' | 'assist') => {
+    log.info('Starting AI assistance', { 
+      mode, 
+      hasRecipient: !!formData.to,
+      hasSubject: !!formData.subject,
+      contentLength: formData.body.length
+    });
+
+    if (!formData.to || !formData.subject) {
+      log.warn('Missing required fields for AI assistance', { 
+        hasRecipient: !!formData.to,
+        hasSubject: !!formData.subject
+      });
+      setError('Please provide recipient and subject before using AI assistance');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const message = {
+        role: 'user' as const,
+        content: JSON.stringify({
+          type: 'compose',
+          action: mode === 'full' ? 'generate' : 'improve',
+          mode,
+          email: {
+            to: [formData.to],
+            subject: formData.subject,
+            content: mode === 'assist' ? formData.body : ''
+          }
+        }),
+        type: 'compose' as const
+      };
+
+      log.info('Making API request for AI assistance');
+      const response = await fetch('/api/ai/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: message.content,
+          context: {
+            email: {
+              to: formData.to,
+              subject: formData.subject,
+              body: formData.body
+            }
+          }
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to get AI assistance');
+      }
+
+      const data = await response.json();
+      log.info('Received AI assistance response', { 
+        type: data.type,
+        hasMetadata: !!data.metadata,
+        composeMode: mode
+      });
+      
+      if (data.type === 'compose' && data.metadata?.composeData) {
+        log.info('Updating form with AI-generated content');
+        setFormData(prev => ({
+          ...prev,
+          body: data.metadata.composeData.content
+        }));
+      }
+    } catch (err) {
+      log.error('Error during AI assistance', err);
+      setError(err instanceof Error ? err.message : 'Failed to get AI assistance');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -62,23 +166,45 @@ export function ComposeEmail({ onClose }: ComposeEmailProps) {
           <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
             New Message
           </h2>
-          <button
-            onClick={onClose}
-            className="rounded p-2 text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="h-5 w-5"
-              viewBox="0 0 20 20"
-              fill="currentColor"
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handleAIAssist('full')}
+              disabled={isSubmitting || !formData.to || !formData.subject}
+              className="flex items-center gap-2"
             >
-              <path
-                fillRule="evenodd"
-                d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
-                clipRule="evenodd"
-              />
-            </svg>
-          </button>
+              <Sparkles className="h-4 w-4" />
+              Generate
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handleAIAssist('assist')}
+              disabled={isSubmitting || !formData.to || !formData.subject || !formData.body}
+              className="flex items-center gap-2"
+            >
+              <Wand2 className="h-4 w-4" />
+              Improve
+            </Button>
+            <button
+              onClick={onClose}
+              className="rounded p-2 text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-5 w-5"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+              >
+                <path
+                  fillRule="evenodd"
+                  d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
+                  clipRule="evenodd"
+                />
+              </svg>
+            </button>
+          </div>
         </div>
         <form onSubmit={handleSubmit} className="p-4">
           <div className="space-y-4">

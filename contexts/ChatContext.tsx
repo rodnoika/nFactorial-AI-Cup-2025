@@ -8,7 +8,7 @@ export interface ChatMessage {
   role: 'user' | 'assistant' | 'system';
   content: string;
   timestamp: Date;
-  type?: 'summary' | 'compose' | 'query' | 'error' | 'system';
+  type?: 'summary' | 'compose' | 'compose-assist' | 'query' | 'error' | 'system';
   metadata?: {
     emailId?: string;
     summaryType?: 'brief' | 'detailed' | 'action-items';
@@ -18,7 +18,9 @@ export interface ChatMessage {
       content: string;
       attachments?: File[];
     };
-    action?: 'send' | 'confirm';
+    composeMode?: 'full' | 'assist';
+    partialContent?: string;
+    action?: 'send' | 'confirm' | 'generate' | 'improve';
     emailResult?: any;
   };
   read?: boolean;

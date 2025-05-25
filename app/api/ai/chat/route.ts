@@ -88,14 +88,83 @@ const validateEmailData = (email: any) => {
   return true;
 };
 
+const composePrompts = {
+  full: `You are an AI email assistant. Generate a professional email based on the following details:
+- Recipient: {to}
+- Subject: {subject}
+- Context: {context}
+
+Generate a complete, well-structured email that is:
+1. Professional and appropriate for the context
+2. Clear and concise
+3. Properly formatted with greeting and signature
+4. Tailored to the recipient and subject
+
+Return the response in the following JSON format:
+{
+  "type": "compose",
+  "email": {
+    "to": ["recipient@example.com"],
+    "subject": "Email Subject",
+    "content": "Email content with proper formatting"
+  },
+  "action": "confirm"
+}`,
+
+  assist: `You are an AI email assistant. Help improve and complete this email draft:
+- Recipient: {to}
+- Subject: {subject}
+- Current Draft: {partialContent}
+- Context: {context}
+
+Analyze the draft and provide an improved version that:
+1. Maintains the original intent and tone
+2. Improves clarity and professionalism
+3. Adds any missing important elements
+4. Fixes any grammatical or structural issues
+
+Return the response in the following JSON format:
+{
+  "type": "compose",
+  "email": {
+    "to": ["recipient@example.com"],
+    "subject": "Email Subject",
+    "content": "Improved email content"
+  },
+  "action": "confirm"
+}`
+};
+
+// Add logging utility
+const log = {
+  info: (message: string, data?: any) => {
+    console.log(`[INFO] ${new Date().toISOString()} - ${message}`, data ? JSON.stringify(data, null, 2) : '');
+  },
+  error: (message: string, error?: any) => {
+    console.error(`[ERROR] ${new Date().toISOString()} - ${message}`, error ? JSON.stringify(error, null, 2) : '');
+  },
+  warn: (message: string, data?: any) => {
+    console.warn(`[WARN] ${new Date().toISOString()} - ${message}`, data ? JSON.stringify(data, null, 2) : '');
+  }
+};
+
 export async function POST(req: Request) {
+  const requestId = Math.random().toString(36).substring(7);
+  log.info(`[${requestId}] Starting chat request processing`);
+
   try {
     const session = await auth(authOptions);
     if (!session) {
+      log.warn(`[${requestId}] Unauthorized request attempt`);
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const { message, context } = await req.json();
+    log.info(`[${requestId}] Received request`, { 
+      messageType: typeof message === 'string' ? 'text' : 'json',
+      hasContext: !!context,
+      contextType: context?.email ? 'email' : 'chat'
+    });
 
     const emailContext = context.email ? `
 Current Email Context:
@@ -108,6 +177,7 @@ Content: ${context.email.body}
 Please use this email context to provide more relevant and accurate responses.
 ` : '';
 
+    log.info(`[${requestId}] Starting chat with AI model`);
     const chat = model.startChat({
       history: [
         {
@@ -134,6 +204,10 @@ Please use this email context to provide more relevant and accurate responses.
     const result = await chat.sendMessage(message);
     const response = await result.response;
     const text = response.text();
+    log.info(`[${requestId}] Received AI response`, { 
+      responseLength: text.length,
+      hasJson: text.includes('{') && text.includes('}')
+    });
 
     let type = 'query';
     let metadata = {};
@@ -142,15 +216,22 @@ Please use this email context to provide more relevant and accurate responses.
     // Get the last user message for action inference
     const lastUserMessage = context.messages?.slice().reverse().find((msg: any) => msg.role === 'user')?.content;
     const userAction = detectUserAction(lastUserMessage);
+    log.info(`[${requestId}] Detected user action`, { userAction });
 
     // Try to parse the AI response
     const parsedResponse = extractJsonFromResponse(text);
     
     if (parsedResponse) {
+      log.info(`[${requestId}] Successfully parsed JSON response`, { 
+        type: parsedResponse.type,
+        action: parsedResponse.action
+      });
+
       // Handle email composition
       if (parsedResponse.type === 'compose') {
         // Validate email data
         if (!validateEmailData(parsedResponse.email)) {
+          log.error(`[${requestId}] Invalid email data structure`, parsedResponse.email);
           content = 'Invalid email data. Please provide valid recipient, subject, and content.';
           type = 'error';
           metadata = {
@@ -162,10 +243,16 @@ Please use this email context to provide more relevant and accurate responses.
         } else {
           type = 'compose';
           const finalAction = userAction || parsedResponse.action;
+          log.info(`[${requestId}] Processing email composition`, { 
+            action: finalAction,
+            recipient: parsedResponse.email.to,
+            subject: parsedResponse.email.subject
+          });
           
           // Only send if explicitly confirmed by user
           if (finalAction === 'send') {
             try {
+              log.info(`[${requestId}] Attempting to send email`);
               const baseUrl = process.env.NEXTAUTH_URL || 'http://localhost:3001';
               const emailResponse = await fetch(`${baseUrl}/api/gmail/send`, {
                 method: 'POST',
@@ -173,14 +260,18 @@ Please use this email context to provide more relevant and accurate responses.
                 body: JSON.stringify(parsedResponse.email),
               });
 
-              console.log('Email response status:', emailResponse.status);
+              log.info(`[${requestId}] Email send response`, { 
+                status: emailResponse.status,
+                ok: emailResponse.ok
+              });
+
               const responseData = await emailResponse.json();
-              console.log('Email response data:', responseData);
 
               if (!emailResponse.ok) {
                 throw new Error(responseData.details || responseData.message || 'Failed to send email');
               }
 
+              log.info(`[${requestId}] Email sent successfully`);
               content = `Email sent successfully to ${parsedResponse.email.to.join(', ')}`;
               metadata = {
                 composeData: parsedResponse.email,
@@ -188,7 +279,7 @@ Please use this email context to provide more relevant and accurate responses.
                 emailResult: responseData
               };
             } catch (error: any) {
-              console.error('Email sending error:', error);
+              log.error(`[${requestId}] Email sending failed`, error);
               content = error.message || 'Failed to send email. Please try again.';
               type = 'error';
               metadata = {
@@ -201,7 +292,7 @@ Please use this email context to provide more relevant and accurate responses.
               };
             }
           } else {
-            // Request confirmation
+            log.info(`[${requestId}] Requesting email confirmation`);
             content = `Please confirm sending email to ${parsedResponse.email.to.join(', ')}`;
             metadata = {
               composeData: parsedResponse.email,
@@ -212,11 +303,12 @@ Please use this email context to provide more relevant and accurate responses.
         }
       }
     } else {
+      log.info(`[${requestId}] Processing non-JSON response`);
       // Handle non-JSON responses
       if (text.toLowerCase().includes('summary')) {
         type = 'summary';
       } else if (userAction === 'send') {
-        // If user explicitly said "send" but AI didn't return JSON
+        log.warn(`[${requestId}] User requested send but AI didn't return JSON`);
         content = 'I need more information to send the email. Please provide recipient, subject, and content.';
         type = 'error';
         metadata = {
@@ -228,13 +320,14 @@ Please use this email context to provide more relevant and accurate responses.
       }
     }
 
+    log.info(`[${requestId}] Sending final response`, { type, hasMetadata: !!metadata });
     return NextResponse.json({
       content,
       type,
       metadata,
     });
   } catch (error) {
-    console.error('Chat API error:', error);
+    log.error(`[${requestId}] Chat API error`, error);
     return NextResponse.json({ error: 'Failed to process chat message' }, { status: 500 });
   }
 }
