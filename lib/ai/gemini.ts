@@ -1,22 +1,19 @@
 import { GoogleGenerativeAI, GenerativeModel, HarmCategory, HarmBlockThreshold } from '@google/generative-ai';
 
-// Rate limiting configuration with sliding window
 interface RateLimitState {
-  requests: number[];  // Timestamps of recent requests
-  windowSize: number;  // Window size in milliseconds
-  maxRequests: number; // Maximum requests allowed in the window
-  backoffMultiplier: number; // For exponential backoff
+  requests: number[];  
+  windowSize: number;  
+  maxRequests: number; 
+  backoffMultiplier: number;
 }
 
-// Rate limit configuration for pro model
 const rateLimit: RateLimitState = {
   requests: [],
-  windowSize: 60000, // 1 minute window
-  maxRequests: 10,   // Conservative limit for pro model
+  windowSize: 60000, 
+  maxRequests: 10, 
   backoffMultiplier: 1.5
 };
 
-// Circuit breaker state
 interface CircuitBreakerState {
   failures: number;
   lastFailureTime: number;
@@ -28,18 +25,15 @@ const circuitBreaker: CircuitBreakerState = {
   failures: 0,
   lastFailureTime: 0,
   isOpen: false,
-  resetTimeout: 30000 // 30 seconds
+  resetTimeout: 30000 
 };
 
-// Sliding window rate limiting with exponential backoff
 function checkRateLimit(): { allowed: boolean; retryAfter: number } {
   const now = Date.now();
   const windowStart = now - rateLimit.windowSize;
   
-  // Remove requests outside the current window
   rateLimit.requests = rateLimit.requests.filter(timestamp => timestamp > windowStart);
   
-  // Check circuit breaker
   if (circuitBreaker.isOpen) {
     const timeSinceLastFailure = now - circuitBreaker.lastFailureTime;
     if (timeSinceLastFailure > circuitBreaker.resetTimeout) {
@@ -50,7 +44,6 @@ function checkRateLimit(): { allowed: boolean; retryAfter: number } {
     }
   }
   
-  // Check if we're within limits
   if (rateLimit.requests.length >= rateLimit.maxRequests) {
     const oldestRequest = rateLimit.requests[0];
     const nextAvailableTime = oldestRequest + rateLimit.windowSize;
@@ -61,7 +54,6 @@ function checkRateLimit(): { allowed: boolean; retryAfter: number } {
   return { allowed: true, retryAfter: 0 };
 }
 
-// Add a request to the rate limit window with exponential backoff
 function addRequest(success: boolean) {
   if (success) {
     circuitBreaker.failures = Math.max(0, circuitBreaker.failures - 1);
@@ -79,7 +71,6 @@ function addRequest(success: boolean) {
   rateLimit.requests.push(Date.now());
 }
 
-// Calculate time until next available request with exponential backoff
 function getTimeUntilNextRequest(): number {
   if (circuitBreaker.isOpen) {
     return circuitBreaker.resetTimeout;
@@ -93,7 +84,6 @@ function getTimeUntilNextRequest(): number {
   const nextAvailableTime = oldestRequest + rateLimit.windowSize;
   const baseWait = Math.max(0, nextAvailableTime - Date.now());
   
-  // Apply exponential backoff based on failure count
   return baseWait * Math.pow(rateLimit.backoffMultiplier, circuitBreaker.failures);
 }
 
@@ -109,20 +99,18 @@ if (!process.env.GEMINI_API_KEY) {
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-// Initialize pro model
 const proModel = genAI.getGenerativeModel({ 
   model: "gemini-1.5-pro",
   generationConfig: {
-    temperature: 0.5,  // Balanced temperature for general use
+    temperature: 0.5,
     topK: 40,
     topP: 0.95,
-    maxOutputTokens: 2048, // Increased for more detailed responses
+    maxOutputTokens: 2048, 
   }
 });
 
-// Cache for storing responses
 const responseCache = new Map<string, { response: GeminiResponse; timestamp: number }>();
-const CACHE_DURATION = 60 * 60 * 1000; // 1 hour in milliseconds
+const CACHE_DURATION = 60 * 60 * 1000; 
 
 export async function generateText(prompt: string, options: { 
   temperature?: number;
@@ -133,7 +121,6 @@ export async function generateText(prompt: string, options: {
     maxTokens
   } = options;
 
-  // Generate cache key
   const cacheKey = `pro:${temperature || 'default'}:${maxTokens || 'default'}:${prompt}`;
   const cached = responseCache.get(cacheKey);
   if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
@@ -168,12 +155,10 @@ export async function generateText(prompt: string, options: {
   } catch (error: any) {
     console.error('Error generating text with Gemini:', error);
     
-    // Handle rate limit errors with detailed logging
     if (error.status === 429) {
       const retryAfter = getTimeUntilNextRequest();
       addRequest(false);
       
-      // Log detailed rate limit information
       console.log('Rate limit exceeded:', {
         error: error.message,
         metadata: error.errorDetails?.[0]?.metadata,

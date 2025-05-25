@@ -38,17 +38,14 @@ When summarizing emails:
 
 Always maintain a professional and helpful tone.`;
 
-// Add these helper functions at the top level
 const detectUserAction = (message: string | undefined) => {
   if (!message) return null;
   
-  // Check for explicit commands
   const lowerMessage = message.toLowerCase().trim();
   if (lowerMessage === 'send' || lowerMessage.startsWith('send ')) {
     return 'send';
   }
   
-  // Try JSON parsing as fallback
   try {
     const jsonMatch = message.match(/{[\s\S]*?}/);
     if (jsonMatch) {
@@ -63,11 +60,9 @@ const detectUserAction = (message: string | undefined) => {
 };
 
 const extractJsonFromResponse = (text: string) => {
-  // Try parsing as raw JSON first
   try {
     return JSON.parse(text);
   } catch {
-    // If that fails, try to extract JSON from markdown
     const jsonMatch = text.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/);
     if (jsonMatch) {
       try {
@@ -99,7 +94,7 @@ Generate a complete, well-structured email that is:
 2. Clear and concise
 3. Properly formatted with greeting and signature
 4. Tailored to the recipient and subject
-
+You are an AI assistant integrated into a production system. You must respond strictly in valid JSON, with no extra commentary, headers, explanations, or formatting. Your entire output MUST be a single valid JSON object, as shown below.
 Return the response in the following JSON format:
 {
   "type": "compose",
@@ -122,6 +117,7 @@ Analyze the draft and provide an improved version that:
 2. Improves clarity and professionalism
 3. Adds any missing important elements
 4. Fixes any grammatical or structural issues
+You are an AI assistant integrated into a production system. You must respond strictly in valid JSON, with no extra commentary, headers, explanations, or formatting. Your entire output MUST be a single valid JSON object, as shown below.
 
 Return the response in the following JSON format:
 {
@@ -133,9 +129,10 @@ Return the response in the following JSON format:
   },
   "action": "confirm"
 }`
-};
+} as const;
 
-// Add logging utility
+type ComposeMode = keyof typeof composePrompts;
+
 const log = {
   info: (message: string, data?: any) => {
     console.log(`[INFO] ${new Date().toISOString()} - ${message}`, data ? JSON.stringify(data, null, 2) : '');
@@ -166,6 +163,49 @@ export async function POST(req: Request) {
       contextType: context?.email ? 'email' : 'chat'
     });
 
+    let parsedMessage;
+    try {
+      parsedMessage = typeof message === 'string' ? JSON.parse(message) : message;
+    } catch (err) {
+      parsedMessage = { type: 'text', content: message };
+    }
+
+    log.info(`[${requestId}] Parsed message`, { 
+      type: parsedMessage.type,
+      action: parsedMessage.action,
+      mode: parsedMessage.mode
+    });
+
+    let prompt = SYSTEM_PROMPT;
+    let generationConfig = {
+      temperature: 0.7,
+      topK: 40,
+      topP: 0.95,
+      maxOutputTokens: 1024,
+    };
+
+    // Handle compose requests with specific prompts
+    if (parsedMessage.type === 'compose') {
+      const emailContext = context?.email || {};
+      const mode = (parsedMessage.mode || 'full') as ComposeMode;
+      
+      if (mode === 'full' || mode === 'assist') {
+        const template = composePrompts[mode];
+        prompt = template
+          .replace('{to}', emailContext.to || parsedMessage.email?.to?.[0] || '')
+          .replace('{subject}', emailContext.subject || parsedMessage.email?.subject || '')
+          .replace('{context}', emailContext.body || '')
+          .replace('{partialContent}', parsedMessage.email?.content || '');
+
+        generationConfig = {
+          temperature: 0.7,
+          topK: 40,
+          topP: 0.95,
+          maxOutputTokens: 2048,
+        };
+      }
+    }
+
     const emailContext = context.email ? `
 Current Email Context:
 Subject: ${context.email.subject}
@@ -177,12 +217,36 @@ Content: ${context.email.body}
 Please use this email context to provide more relevant and accurate responses.
 ` : '';
 
-    log.info(`[${requestId}] Starting chat with AI model`);
+    log.info(`[${requestId}] Starting chat with AI model`, { 
+      promptType: parsedMessage.type,
+      mode: parsedMessage.mode,
+      hasEmailContext: !!context.email
+    });
+
+    let messageToSend;
+    if (parsedMessage.type === 'compose') {
+      const emailData = parsedMessage.email || {};
+      messageToSend = `Please help me ${parsedMessage.action || 'improve'} this email:
+To: ${emailData.to?.join(', ') || ''}
+Subject: ${emailData.subject || ''}
+Content: ${emailData.content || ''}
+
+Context: ${context?.email?.body || ''}`;
+
+      log.info(`[${requestId}] Formatted compose message`, { 
+        action: parsedMessage.action,
+        mode: parsedMessage.mode,
+        messageLength: messageToSend.length
+      });
+    } else {
+      messageToSend = parsedMessage.content;
+    }
+
     const chat = model.startChat({
       history: [
         {
           role: 'user',
-          parts: [{ text: SYSTEM_PROMPT + emailContext }],
+          parts: [{ text: prompt + emailContext }],
         },
         {
           role: 'model',
@@ -193,139 +257,135 @@ Please use this email context to provide more relevant and accurate responses.
           parts: [{ text: msg.content }],
         })),
       ],
-      generationConfig: {
-        temperature: 0.7,
-        topK: 40,
-        topP: 0.95,
-        maxOutputTokens: 1024,
-      },
+      generationConfig,
     });
 
-    const result = await chat.sendMessage(message);
-    const response = await result.response;
-    const text = response.text();
-    log.info(`[${requestId}] Received AI response`, { 
-      responseLength: text.length,
-      hasJson: text.includes('{') && text.includes('}')
-    });
-
-    let type = 'query';
-    let metadata = {};
-    let content = text;
-
-    // Get the last user message for action inference
-    const lastUserMessage = context.messages?.slice().reverse().find((msg: any) => msg.role === 'user')?.content;
-    const userAction = detectUserAction(lastUserMessage);
-    log.info(`[${requestId}] Detected user action`, { userAction });
-
-    // Try to parse the AI response
-    const parsedResponse = extractJsonFromResponse(text);
-    
-    if (parsedResponse) {
-      log.info(`[${requestId}] Successfully parsed JSON response`, { 
-        type: parsedResponse.type,
-        action: parsedResponse.action
+    try {
+      const result = await chat.sendMessage(messageToSend);
+      const response = await result.response;
+      const text = response.text();
+      
+      log.info(`[${requestId}] Received AI response`, { 
+        responseLength: text.length,
+        hasJson: text.includes('{') && text.includes('}'),
+        firstChars: text.substring(0, 100)
       });
 
-      // Handle email composition
-      if (parsedResponse.type === 'compose') {
-        // Validate email data
-        if (!validateEmailData(parsedResponse.email)) {
-          log.error(`[${requestId}] Invalid email data structure`, parsedResponse.email);
-          content = 'Invalid email data. Please provide valid recipient, subject, and content.';
+      let type = 'query';
+      let metadata = {};
+      let content = text;
+
+      const lastUserMessage = context.messages?.slice().reverse().find((msg: any) => msg.role === 'user')?.content;
+      const userAction = detectUserAction(lastUserMessage);
+      log.info(`[${requestId}] Detected user action`, { userAction });
+
+      const parsedResponse = extractJsonFromResponse(text);
+      
+      if (parsedResponse) {
+        log.info(`[${requestId}] Successfully parsed JSON response`, { 
+          type: parsedResponse.type,
+          action: parsedResponse.action
+        });
+
+        if (parsedResponse.type === 'compose') {
+          if (!validateEmailData(parsedResponse.email)) {
+            log.error(`[${requestId}] Invalid email data structure`, parsedResponse.email);
+            content = 'Invalid email data. Please provide valid recipient, subject, and content.';
+            type = 'error';
+            metadata = {
+              error: {
+                message: 'Invalid email data structure',
+                details: 'Missing required fields or invalid format'
+              }
+            };
+          } else {
+            type = 'compose';
+            const finalAction = userAction || parsedResponse.action;
+            log.info(`[${requestId}] Processing email composition`, { 
+              action: finalAction,
+              recipient: parsedResponse.email.to,
+              subject: parsedResponse.email.subject
+            });
+            
+            if (finalAction === 'send') {
+              try {
+                log.info(`[${requestId}] Attempting to send email`);
+                const baseUrl = process.env.NEXTAUTH_URL || 'http://localhost:3001';
+                const emailResponse = await fetch(`${baseUrl}/api/gmail/send`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(parsedResponse.email),
+                });
+
+                log.info(`[${requestId}] Email send response`, { 
+                  status: emailResponse.status,
+                  ok: emailResponse.ok
+                });
+
+                const responseData = await emailResponse.json();
+
+                if (!emailResponse.ok) {
+                  throw new Error(responseData.details || responseData.message || 'Failed to send email');
+                }
+
+                log.info(`[${requestId}] Email sent successfully`);
+                content = `Email sent successfully to ${parsedResponse.email.to.join(', ')}`;
+                metadata = {
+                  composeData: parsedResponse.email,
+                  action: 'sent',
+                  emailResult: responseData
+                };
+              } catch (error: any) {
+                log.error(`[${requestId}] Email sending failed`, error);
+                content = error.message || 'Failed to send email. Please try again.';
+                type = 'error';
+                metadata = {
+                  composeData: parsedResponse.email,
+                  action: 'error',
+                  error: {
+                    message: error.message,
+                    details: error.details
+                  }
+                };
+              }
+            } else {
+              log.info(`[${requestId}] Requesting email confirmation`);
+              content = `Please confirm sending email to ${parsedResponse.email.to.join(', ')}`;
+              metadata = {
+                composeData: parsedResponse.email,
+                action: 'confirm',
+                requiresConfirmation: true
+              };
+            }
+          }
+        }
+      } else {
+        log.info(`[${requestId}] Processing non-JSON response`);
+        if (text.toLowerCase().includes('summary')) {
+          type = 'summary';
+        } else if (userAction === 'send') {
+          log.warn(`[${requestId}] User requested send but AI didn't return JSON`);
+          content = 'I need more information to send the email. Please provide recipient, subject, and content.';
           type = 'error';
           metadata = {
             error: {
-              message: 'Invalid email data structure',
-              details: 'Missing required fields or invalid format'
+              message: 'Missing email details',
+              details: 'Please provide all required email information'
             }
           };
-        } else {
-          type = 'compose';
-          const finalAction = userAction || parsedResponse.action;
-          log.info(`[${requestId}] Processing email composition`, { 
-            action: finalAction,
-            recipient: parsedResponse.email.to,
-            subject: parsedResponse.email.subject
-          });
-          
-          // Only send if explicitly confirmed by user
-          if (finalAction === 'send') {
-            try {
-              log.info(`[${requestId}] Attempting to send email`);
-              const baseUrl = process.env.NEXTAUTH_URL || 'http://localhost:3001';
-              const emailResponse = await fetch(`${baseUrl}/api/gmail/send`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(parsedResponse.email),
-              });
-
-              log.info(`[${requestId}] Email send response`, { 
-                status: emailResponse.status,
-                ok: emailResponse.ok
-              });
-
-              const responseData = await emailResponse.json();
-
-              if (!emailResponse.ok) {
-                throw new Error(responseData.details || responseData.message || 'Failed to send email');
-              }
-
-              log.info(`[${requestId}] Email sent successfully`);
-              content = `Email sent successfully to ${parsedResponse.email.to.join(', ')}`;
-              metadata = {
-                composeData: parsedResponse.email,
-                action: 'sent',
-                emailResult: responseData
-              };
-            } catch (error: any) {
-              log.error(`[${requestId}] Email sending failed`, error);
-              content = error.message || 'Failed to send email. Please try again.';
-              type = 'error';
-              metadata = {
-                composeData: parsedResponse.email,
-                action: 'error',
-                error: {
-                  message: error.message,
-                  details: error.details
-                }
-              };
-            }
-          } else {
-            log.info(`[${requestId}] Requesting email confirmation`);
-            content = `Please confirm sending email to ${parsedResponse.email.to.join(', ')}`;
-            metadata = {
-              composeData: parsedResponse.email,
-              action: 'confirm',
-              requiresConfirmation: true
-            };
-          }
         }
       }
-    } else {
-      log.info(`[${requestId}] Processing non-JSON response`);
-      // Handle non-JSON responses
-      if (text.toLowerCase().includes('summary')) {
-        type = 'summary';
-      } else if (userAction === 'send') {
-        log.warn(`[${requestId}] User requested send but AI didn't return JSON`);
-        content = 'I need more information to send the email. Please provide recipient, subject, and content.';
-        type = 'error';
-        metadata = {
-          error: {
-            message: 'Missing email details',
-            details: 'Please provide all required email information'
-          }
-        };
-      }
-    }
 
-    log.info(`[${requestId}] Sending final response`, { type, hasMetadata: !!metadata });
-    return NextResponse.json({
-      content,
-      type,
-      metadata,
-    });
+      log.info(`[${requestId}] Sending final response`, { type, hasMetadata: !!metadata });
+      return NextResponse.json({
+        content,
+        type,
+        metadata,
+      });
+    } catch (error) {
+      log.error(`[${requestId}] Chat API error`, error);
+      return NextResponse.json({ error: 'Failed to process chat message' }, { status: 500 });
+    }
   } catch (error) {
     log.error(`[${requestId}] Chat API error`, error);
     return NextResponse.json({ error: 'Failed to process chat message' }, { status: 500 });

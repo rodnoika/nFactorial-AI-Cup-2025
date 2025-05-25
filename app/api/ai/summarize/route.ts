@@ -14,9 +14,8 @@ interface CacheEntry {
   timestamp: number;
 }
 
-// In-memory cache with 1-hour expiration
 const cache = new Map<string, CacheEntry>();
-const CACHE_DURATION = 60 * 60 * 1000; // 1 hour in milliseconds
+const CACHE_DURATION = 60 * 60 * 1000; 
 
 function getCacheKey(emailId: string, type: SummaryType): string {
   return `${emailId}:${type}`;
@@ -28,7 +27,6 @@ function getCachedResponse(emailId: string, type: SummaryType): string | null {
   
   if (!entry) return null;
   
-  // Check if cache entry is still valid
   if (Date.now() - entry.timestamp > CACHE_DURATION) {
     cache.delete(key);
     return null;
@@ -141,13 +139,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check cache first
     const cachedSummary = getCachedResponse(emailId, type);
     if (cachedSummary) {
       return NextResponse.json({ summary: cachedSummary, type });
     }
 
-    // Generate summary using Gemini
     const prompt = generatePrompt(type, subject, content);
     const config = getModelConfig(type);
     
@@ -156,7 +152,6 @@ export async function POST(request: NextRequest) {
       throw new Error(response.error || 'Failed to generate summary');
     }
 
-    // Cache the response
     cacheResponse(emailId, type, response.text);
 
     return NextResponse.json({ summary: response.text, type });
@@ -164,7 +159,6 @@ export async function POST(request: NextRequest) {
     console.error('Error generating summary:', error);
     
     if (error instanceof Error) {
-      // Handle rate limit errors
       if (error.message.includes('429')) {
         const retryAfter = parseInt(error.message.match(/retry after (\d+)/i)?.[1] || '60', 10);
         return NextResponse.json(

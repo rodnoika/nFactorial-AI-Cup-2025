@@ -12,7 +12,6 @@ interface ChatDrawerProps {
 }
 
 export function ChatDrawer({ isOpen, onClose, className }: ChatDrawerProps) {
-  // Close drawer on escape key
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
@@ -27,7 +26,6 @@ export function ChatDrawer({ isOpen, onClose, className }: ChatDrawerProps) {
     };
   }, [isOpen, onClose]);
 
-  // Prevent body scroll when drawer is open
   useEffect(() => {
     if (isOpen) {
       document.body.style.overflow = 'hidden';
@@ -42,7 +40,6 @@ export function ChatDrawer({ isOpen, onClose, className }: ChatDrawerProps) {
 
   return (
     <>
-      {/* Backdrop */}
       {isOpen && (
         <div
           className="fixed inset-0 z-40 bg-black/50 transition-opacity"
@@ -51,7 +48,6 @@ export function ChatDrawer({ isOpen, onClose, className }: ChatDrawerProps) {
         />
       )}
 
-      {/* Drawer */}
       <div
         className={cn(
           'fixed right-0 top-0 z-50 h-full w-full max-w-md transform bg-background shadow-xl transition-transform duration-300 ease-in-out md:w-96',

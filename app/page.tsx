@@ -25,7 +25,6 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen bg-white dark:bg-gray-900">
-      {/* Navigation */}
       <nav className="border-b border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
         <div className="mx-auto flex max-w-7xl items-center justify-between p-4">
           <div className="flex items-center gap-2">
@@ -55,7 +54,6 @@ export default function HomePage() {
         </div>
       </nav>
 
-      {/* Hero Section */}
       <main className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
         <div className="grid gap-12 lg:grid-cols-2 lg:gap-8">
           <div className="flex flex-col justify-center">
@@ -93,7 +91,6 @@ export default function HomePage() {
           </div>
         </div>
 
-        {/* Features Section */}
         <div id="features" className="mt-24">
           <h2 className="text-center text-3xl font-bold tracking-tight text-gray-900 dark:text-white sm:text-4xl">
             Powerful Features
@@ -177,7 +174,6 @@ export default function HomePage() {
         </div>
       </main>
 
-      {/* Footer */}
       <footer className="mt-24 border-t border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
         <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
           <div className="text-center text-sm text-gray-500 dark:text-gray-400">

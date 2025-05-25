@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { SendIcon, Loader2, Check, X, Wand2, Sparkles } from 'lucide-react';
+import { SendIcon, Loader2, Check, X, Wand2, Sparkles, Tag } from 'lucide-react';
 import DOMPurify from 'dompurify';
 import {
   Dialog,
@@ -16,6 +16,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { useEmailCategories } from '@/hooks/useEmailCategories'
+import { v4 as uuidv4 } from 'uuid';
+import { cn } from '@/lib/utils'
+import { type EmailCategory } from '@/types/email'
 
 const log = {
   info: (message: string, data?: any) => {
@@ -29,15 +33,51 @@ const log = {
   }
 };
 
+export type MessageType = 'text' | 'email' | 'compose' | 'compose-assist' | 'categorize' | 'error' | 'system' | 'query'
+
+export interface ChatMessage {
+  id: string
+  role: 'user' | 'assistant' | 'system'
+  content: string
+  type: MessageType
+  metadata?: {
+    email?: {
+      to: string
+      subject: string
+      content: string
+      status: 'draft' | 'sent' | 'failed'
+    }
+    composeMode?: 'full' | 'assist'
+    partialContent?: string
+    action?: 'confirm' | 'cancel'
+    category?: {
+      email: string
+      category: EmailCategory
+      confidence: number
+      reasoning: string
+    }
+    composeData?: {
+      to: string[]
+      subject: string
+      content: string
+      attachments?: File[]
+    }
+  }
+  timestamp: Date
+  read?: boolean
+}
+
 export function EmailChat() {
   const { messages, addMessage, isLoading, setIsLoading, selectedEmail } = useChat();
   const [input, setInput] = useState('');
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [pendingEmail, setPendingEmail] = useState<any>(null);
+  const [partialContent, setPartialContent] = useState('');
+  const [showPartialInput, setShowPartialInput] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const [composeMode, setComposeMode] = useState<'full' | 'assist' | null>(null);
-  const [partialContent, setPartialContent] = useState('');
+  const { categorizeEmail, isLoading: isCategorizing } = useEmailCategories()
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -106,7 +146,7 @@ export function EmailChat() {
         addMessage({
           role: 'system',
           content: 'Sorry, I encountered an error while sending the email. Please try again.',
-          type: 'error',
+          type: 'text',
         });
       } finally {
         setIsLoading(false);
@@ -119,7 +159,7 @@ export function EmailChat() {
       addMessage({
         role: 'system',
         content: 'Email sending cancelled.',
-        type: 'system',
+        type: 'text',
       });
       setShowConfirmDialog(false);
       setPendingEmail(null);
@@ -190,7 +230,7 @@ export function EmailChat() {
       addMessage({
         role: 'system',
         content: 'Sorry, I encountered an error while composing the email. Please try again.',
-        type: 'error',
+        type: 'text',
       });
     } finally {
       setIsLoading(false);
@@ -212,7 +252,7 @@ export function EmailChat() {
     addMessage({
       role: 'user',
       content: userMessage,
-      type: 'query',
+      type: 'text',
     });
 
     setIsLoading(true);
@@ -277,7 +317,7 @@ export function EmailChat() {
       addMessage({
         role: 'system',
         content: 'Sorry, I encountered an error. Please try again.',
-        type: 'error',
+        type: 'text',
       });
     } finally {
       if (!showConfirmDialog) {
@@ -285,6 +325,41 @@ export function EmailChat() {
         inputRef.current?.focus();
       }
     }
+  };
+
+  const handleCategorize = async (email: string) => {
+    const result = await categorizeEmail({ email })
+    if (result) {
+      addMessage({
+        role: 'assistant',
+        content: `Email ${email} categorized as ${result.category.name} with ${Math.round(result.confidence * 100)}% confidence.`,
+        type: 'categorize' as const,
+        metadata: {
+          category: {
+            email,
+            category: result.category,
+            confidence: result.confidence,
+            reasoning: result.metadata?.reasoning || ''
+          }
+        }
+      })
+    }
+  }
+
+  const handleImprove = () => {
+    setShowPartialInput(true);
+    inputRef.current?.focus();
+  };
+
+  const handleGenerate = () => {
+    handleComposeMode('full');
+  };
+
+  const handlePartialSubmit = () => {
+    if (!partialContent.trim()) return;
+    handleComposeMode('assist');
+    setShowPartialInput(false);
+    setPartialContent('');
   };
 
   const renderMessage = (message: typeof messages[0]) => {
@@ -330,6 +405,21 @@ export function EmailChat() {
               </div>
             </div>
           )}
+          {message.type === 'categorize' && message.metadata?.category && (
+            <div className="mt-2 rounded-md bg-background/50 p-2 text-sm">
+              <div className="font-medium">
+                Category: {message.metadata.category.category.name}
+              </div>
+              <div className="text-muted-foreground">
+                Confidence: {Math.round(message.metadata.category.confidence * 100)}%
+              </div>
+              {message.metadata.category.reasoning && (
+                <div className="mt-1 text-xs text-muted-foreground">
+                  {message.metadata.category.reasoning}
+                </div>
+              )}
+            </div>
+          )}
           <div className="text-xs opacity-70 mt-1 flex-shrink-0 w-full overflow-hidden">
             {new Date(message.timestamp).toLocaleTimeString()}
           </div>
@@ -362,45 +452,145 @@ export function EmailChat() {
   );
 
   return (
-    <>
-      <Card className="flex flex-col h-[600px] w-full">
-        <div className="p-4 border-b">
-          <h2 className="text-lg font-semibold">Email Assistant</h2>
-        </div>
-        <ScrollArea ref={scrollRef} className="flex-1 p-4 w-full">
-          <div className="space-y-4 w-full min-w-full table">
-            {messages.map(renderMessage)}
-            {isLoading && (
-              <div className="flex justify-start mb-4 w-full">
-                <div className="bg-card text-card-foreground border rounded-lg px-4 py-2">
-                  <Loader2 className="h-4 w-4 animate-spin" />
+    <div className="flex h-full flex-col gap-4">
+      <div className="flex-1 overflow-hidden">
+        <ScrollArea className="h-full">
+          <div className="flex flex-col gap-4 p-4">
+            {messages.map(message => (
+              <div
+                key={message.id}
+                className={cn(
+                  'flex w-full',
+                  message.role === 'user' ? 'justify-end' : 'justify-start'
+                )}
+              >
+                <div
+                  className={cn(
+                    'flex max-w-[85%] flex-col gap-2 rounded-lg p-3',
+                    message.role === 'user'
+                      ? 'bg-primary text-primary-foreground'
+                      : 'bg-muted'
+                  )}
+                >
+                  <div className="break-words whitespace-pre-wrap">
+                    {message.content}
+                  </div>
+                  {message.type === 'categorize' && message.metadata?.category && (
+                    <div className="mt-2 rounded-md bg-background/50 p-2 text-sm">
+                      <div className="font-medium">
+                        Category: {message.metadata.category.category.name}
+                      </div>
+                      <div className="text-muted-foreground">
+                        Confidence: {Math.round(message.metadata.category.confidence * 100)}%
+                      </div>
+                      {message.metadata.category.reasoning && (
+                        <div className="mt-1 text-xs text-muted-foreground">
+                          {message.metadata.category.reasoning}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  <div className="text-xs opacity-70">
+                    {message.timestamp.toLocaleTimeString()}
+                  </div>
                 </div>
               </div>
-            )}
+            ))}
           </div>
         </ScrollArea>
-        <form onSubmit={handleSubmit} className="p-4 border-t space-y-4 w-full">
-          <CompositionControls />
-          <div className="flex gap-2 w-full">
-            <Input
-              ref={inputRef}
-              value={input}
-              onChange={(e) => {
-                setInput(e.target.value);
-                if (composeMode === 'assist') {
-                  setPartialContent(e.target.value);
-                }
-              }}
-              placeholder="Ask about your emails or compose a new one..."
-              disabled={isLoading}
-              className="flex-1 min-w-0"
-            />
-            <Button type="submit" disabled={isLoading || !input.trim()}>
-              <SendIcon className="h-4 w-4" />
-            </Button>
-          </div>
+      </div>
+
+      <div className="border-t p-4">
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          {showPartialInput ? (
+            <div className="flex flex-col gap-2">
+              <Input
+                value={partialContent}
+                onChange={e => setPartialContent(e.target.value)}
+                placeholder="Enter your draft email content..."
+                disabled={isLoading}
+                className="flex-1"
+              />
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setShowPartialInput(false);
+                    setPartialContent('');
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  onClick={handlePartialSubmit}
+                  disabled={isLoading || !partialContent.trim()}
+                >
+                  {isLoading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <>
+                      <Wand2 className="mr-2 h-4 w-4" />
+                      Improve Draft
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="flex gap-2">
+                <Input
+                  value={input}
+                  onChange={e => setInput(e.target.value)}
+                  placeholder="Type a message..."
+                  disabled={isLoading || isCategorizing}
+                  className="flex-1"
+                />
+                <Button type="submit" disabled={isLoading || isCategorizing || !input.trim()}>
+                  {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Send'}
+                </Button>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => handleCategorize(input)}
+                  disabled={isCategorizing || !input.includes('@')}
+                >
+                  {isCategorizing ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <>
+                      <Tag className="mr-2 h-4 w-4" />
+                      Categorize Email
+                    </>
+                  )}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleImprove}
+                  disabled={isLoading}
+                >
+                  <Wand2 className="mr-2 h-4 w-4" />
+                  Improve
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleGenerate}
+                  disabled={isLoading}
+                >
+                  <Sparkles className="mr-2 h-4 w-4" />
+                  Generate
+                </Button>
+              </div>
+            </>
+          )}
         </form>
-      </Card>
+      </div>
 
       <Dialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
         <DialogContent>
@@ -450,6 +640,6 @@ export function EmailChat() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </>
+    </div>
   );
 } 

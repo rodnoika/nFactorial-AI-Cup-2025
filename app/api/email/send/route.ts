@@ -22,14 +22,11 @@ async function getOAuthClient(accessToken: string, refreshToken?: string) {
     refresh_token: refreshToken,
   });
 
-  // Set up token refresh handler
   oauth2Client.on('tokens', (tokens) => {
     if (tokens.refresh_token) {
-      // Store the new refresh token if provided
       console.log('New refresh token received');
     }
     if (tokens.access_token) {
-      // Update the access token
       console.log('New access token received');
     }
   });
@@ -48,7 +45,7 @@ function createEmailMessage(to: string[], subject: string, content: string) {
     `--${boundary}`,
     'Content-Type: text/plain; charset=utf-8',
     '',
-    content.replace(/<[^>]*>/g, ''), // Strip HTML tags for plain text version
+    content.replace(/<[^>]*>/g, ''), 
     '',
     `--${boundary}`,
     'Content-Type: text/html; charset=utf-8',
@@ -122,7 +119,6 @@ export async function POST(req: Request) {
         details: apiError.errors?.[0]?.message || 'Unknown error occurred',
       };
 
-      // Handle specific Gmail API errors
       if (apiError.code === 401) {
         error.message = 'Authentication failed';
         error.details = 'Access token expired or invalid. Please sign in again.';

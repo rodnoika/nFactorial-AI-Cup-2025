@@ -7,9 +7,7 @@ interface FormattingOptions {
   content: string;
 }
 
-// Custom renderer for marked to add Tailwind classes
 class CustomRenderer extends Renderer {
-  // Add escape method from marked's utils
   private escape(html: string): string {
     return html
       .replace(/&/g, '&amp;')
@@ -72,7 +70,6 @@ class CustomRenderer extends Renderer {
 
 const renderer = new CustomRenderer();
 
-// Configure marked options
 const markedOptions: MarkedOptions = {
   renderer,
   gfm: true,
@@ -82,10 +79,8 @@ const markedOptions: MarkedOptions = {
 marked.setOptions(markedOptions);
 
 export function formatSummary({ type, content }: FormattingOptions): string {
-  // First, ensure the content has proper markdown structure based on type
   const structuredContent = ensureMarkdownStructure(type, content);
   
-  // Then convert to HTML with our custom renderer
   return marked.parse(structuredContent) as string;
 }
 
@@ -103,7 +98,6 @@ function ensureMarkdownStructure(type: SummaryType, content: string): string {
 }
 
 function formatBriefSummary(content: string): string {
-  // Ensure the content has proper headers and structure
   if (!content.includes('##')) {
     return `## Summary\n${content}\n\n## Key Points\n• ${content.split('. ').join('\n• ')}`;
   }
@@ -111,7 +105,6 @@ function formatBriefSummary(content: string): string {
 }
 
 function formatDetailedSummary(content: string): string {
-  // Ensure proper section headers
   if (!content.includes('##')) {
     const sections = content.split('\n\n');
     return `## Overview\n${sections[0]}\n\n## Key Details\n${sections.slice(1).join('\n\n')}`;
@@ -120,7 +113,6 @@ function formatDetailedSummary(content: string): string {
 }
 
 function formatActionItems(content: string): string {
-  // Ensure proper task list format
   if (!content.includes('##')) {
     const items = content.split('\n').filter(line => line.trim().length > 0);
     const formattedItems = items.map(item => {
@@ -134,7 +126,6 @@ function formatActionItems(content: string): string {
   return content;
 }
 
-// Helper function to extract action items with priorities
 export function extractActionItems(content: string): {
   high: string[];
   medium: string[];
@@ -171,7 +162,6 @@ export function extractActionItems(content: string): {
   return items;
 }
 
-// Helper function to get summary preview
 export function getSummaryPreview(content: string, maxLength: number = 150): string {
   const plainText = content.replace(/[#*`-]/g, '').trim();
   if (plainText.length <= maxLength) return plainText;
